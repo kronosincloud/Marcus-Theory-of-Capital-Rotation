@@ -10,13 +10,11 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from matplotlib.colors import Normalize
 from matplotlib.collections import LineCollection
-from matplotlib.patches import Rectangle
 
-from config import CONFIG, THEME, CMAP_MARCUS, SECTOR_NAMES
+from config import CONFIG, THEME, CMAP_MARCUS
 from engine import (
     compute_marcus_rate_normalized,
     compute_2d_marcus_map,
-    compute_activation_barrier,
 )
 
 
@@ -54,7 +52,7 @@ def render_png(data):
     fig.patch.set_facecolor(THEME["BG"])
 
     gs = GridSpec(4, 2, width_ratios=[2.2, 1],
-                  left=0.05, right=0.97, top=0.87, bottom=0.07,
+                  left=0.06, right=0.97, top=0.87, bottom=0.07,
                   hspace=0.38, wspace=0.10, figure=fig)
 
     # ═══════════ 3D SURFACE ═══════════
@@ -72,7 +70,7 @@ def render_png(data):
     z_floor = -0.04
     ax3d.contourf(DG0_m, T_m, K_surf,
                   zdir="z", offset=z_floor,
-                  cmap=CMAP_MARCUS, norm=norm, alpha=0.30, levels=12)
+                  cmap=CMAP_MARCUS, norm=norm, alpha=0.18, levels=12)
 
     dG0_ridge = -lam_v
     ax3d.plot(dG0_ridge, t_v, np.ones(T_eff),
@@ -98,13 +96,14 @@ def render_png(data):
         axis._axinfo["grid"]["color"] = (0.13, 0.13, 0.13, 0.5)
         axis._axinfo["grid"]["linewidth"] = 0.35
 
-    ax3d.set_xlabel(r"$\Delta G^0$  DRIVING FORCE",
-                    fontsize=11, fontweight="bold",
-                    color=THEME["TEXT_DIM"], labelpad=14,
+    # FIX: Shortened labels to prevent cutoff at azim=-50
+    ax3d.set_xlabel(r"$\Delta G^0$",
+                    fontsize=12, fontweight="bold",
+                    color=THEME["TEXT_DIM"], labelpad=12,
                     fontfamily=THEME["FONT"])
-    ax3d.set_ylabel("TIME  t  [days]",
+    ax3d.set_ylabel("TIME [days]",
                     fontsize=11, fontweight="bold",
-                    color=THEME["TEXT_DIM"], labelpad=14,
+                    color=THEME["TEXT_DIM"], labelpad=12,
                     fontfamily=THEME["FONT"])
     ax3d.set_zlabel(r"$\hat{k}$  ROTATION RATE",
                     fontsize=12, fontweight="bold",
@@ -116,7 +115,8 @@ def render_png(data):
     ax3d.tick_params(axis="both", colors=THEME["TEXT_DIM"], labelsize=8)
 
     # ═══════════ BOTTOM-LEFT INSET — 2D Marcus Map ═══════════
-    ax_ins = fig.add_axes([0.055, 0.075, 0.20, 0.14], zorder=100)
+    # FIX: Adjusted position and sizing to prevent label cutoff
+    ax_ins = fig.add_axes([0.065, 0.08, 0.19, 0.13], zorder=100)
     ax_ins.set_facecolor("#0a0a0a")
     for sp in ax_ins.spines.values():
         sp.set_color(THEME["SPINE"])
@@ -138,15 +138,16 @@ def render_png(data):
 
     pts = np.array([dG0_v, lam_v]).T.reshape(-1, 1, 2)
     segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
-    lc = LineCollection(segs, cmap="cool", linewidth=0.9, alpha=0.85)
+    lc = LineCollection(segs, cmap="cool", linewidth=1.4, alpha=0.90)
     lc.set_array(np.linspace(0, 1, len(dG0_v) - 1))
+    lc.set_clim(0, 1)
     ax_ins.add_collection(lc)
 
     ax_ins.set_xlabel(r"$\Delta G^0$", fontsize=6,
                       color=THEME["TEXT_DIM"], fontfamily=THEME["FONT"])
     ax_ins.set_ylabel(r"$\lambda$", fontsize=6,
                       color=THEME["TEXT_DIM"], fontfamily=THEME["FONT"])
-    ax_ins.set_title("2D MARCUS MAP", fontsize=6,
+    ax_ins.set_title("2D MARCUS MAP", fontsize=7,
                      color=THEME["TEXT_DIM"], fontfamily=THEME["FONT"])
 
     # ═══════════ RIGHT PANELS ═══════════
@@ -154,7 +155,7 @@ def render_png(data):
     for p in panels:
         _style_ax(p)
 
-    # ── P1: Driving Force ──
+    # -- P1: Driving Force --
     ax1 = panels[0]
     ax1.plot(t_v, dG0_v, color=THEME["CYAN"], lw=1.0, label=r"$\Delta G^0$")
     ax1.plot(t_v, -lam_v, color=THEME["ORANGE"], lw=1.0, ls="--",
@@ -172,10 +173,9 @@ def render_png(data):
     for txt in leg1.get_texts():
         txt.set_color(THEME["TEXT_DIM"])
 
-    # ── P2: Reorganisation Energy ──
+    # -- P2: Reorganisation Energy --
     ax2 = panels[1]
     ax2.plot(t_v, lam_v, color=THEME["YELLOW"], lw=1.0, label=r"$\lambda$")
-    # kBT_v is already scaled by c_lam in main.py, so it's directly comparable
     ax2.plot(t_v, kBT_v, color=THEME["GREEN"], lw=1.0, alpha=0.7,
              label=r"$k_BT$")
     ax2.set_ylabel(r"$\lambda$", color=THEME["TEXT_DIM"],
@@ -188,7 +188,7 @@ def render_png(data):
     for txt in leg2.get_texts():
         txt.set_color(THEME["TEXT_DIM"])
 
-    # ── P3: Activation Barrier ──
+    # -- P3: Activation Barrier --
     ax3 = panels[2]
     ax3.plot(t_v, dG_dd, color=THEME["MAGENTA"], lw=1.0)
     ax3.fill_between(t_v, 0, dG_dd, color=THEME["MAGENTA"], alpha=0.20)
@@ -199,7 +199,7 @@ def render_png(data):
                   fontsize=9, color=THEME["TEXT_DIM"],
                   fontfamily=THEME["FONT"], pad=4)
 
-    # ── P4: Marcus vs Actual ──
+    # -- P4: Marcus vs Actual --
     ax4 = panels[3]
     valid_corr = np.isfinite(k_act) & np.isfinite(k_mar)
     corr_val = np.corrcoef(k_mar[valid_corr], k_act[valid_corr])[0, 1]

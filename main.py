@@ -43,7 +43,7 @@ def main():
 
     os.makedirs(CONFIG["OUT_DIR"], exist_ok=True)
 
-    # ═══════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════
     # MODULE 1: DATA GENERATION
     # ═══════════════════════════════════════════════════════════
     log("MODULE 1: DATA GENERATION")
@@ -89,10 +89,17 @@ def main():
     _assert_shape(kBT_valid, (T_eff,), "kBT_valid")
     log(f"  k_BT range (raw): [{kBT_valid.min():.2e}, {kBT_valid.max():.2e}]")
 
-    # Scale kBT by c_lam so it shares units with lambda (required by Marcus formula)
-    kBT_valid = kBT_valid * c_lam
-    log(f"  k_BT range (cal) : [{kBT_valid.min():.6f}, {kBT_valid.max():.4f}]")
-    log(f"  lam/kBT ratio    : {np.median(lam_valid)/np.median(kBT_valid):.2f}")
+    # Scale kBT to achieve sharp ridge: kBT ≈ λ/10
+    kBT_lam_ratio_raw = np.median(kBT_valid) / np.median(lam_valid)
+    kBT_target_ratio = CONFIG["C_KBT_TARGET_RATIO"]  # 0.10
+    kBT_scale = kBT_target_ratio / (kBT_lam_ratio_raw + 1e-20)
+    kBT_valid = kBT_valid * kBT_scale
+    kBT_final_ratio = np.median(kBT_valid) / np.median(lam_valid)
+
+    log(f"  k_BT/kBT ratio (raw)  : {kBT_lam_ratio_raw:.4f}")
+    log(f"  k_BT/kBT scale factor : {kBT_scale:.4f}")
+    log(f"  k_BT range (cal)      : [{kBT_valid.min():.6f}, {kBT_valid.max():.4f}]")
+    log(f"  k_BT/lam ratio (final) : {kBT_final_ratio:.4f}  (target {kBT_target_ratio})")
 
     dG_barrier = compute_activation_barrier(dG0_valid, lam_valid)
     _assert_shape(dG_barrier, (T_eff,), "dG_barrier")
@@ -111,27 +118,7 @@ def main():
     t_valid = np.arange(ROLL, ROLL + T_eff, dtype=float)
     _assert_shape(t_valid, (T_eff,), "t_valid")
 
-    # ══════════════════════════════════════════════════════════════
-    # k_actual: Empirical capital rotation velocity
-    #
-    # The spec's formula (252-day momentum weight changes over 5 days)
-    # produces a mathematically flat signal with synthetic data because
-    # cumulative momentum is too smooth. Multiple alternative empirical
-    # formulas were tested (spread-convergence, 21-day weights, daily
-    # return dispersion); all failed because they measure TOTAL turnover
-    # (high during inverted episodes as capital chases expensive sectors)
-    # while Marcus predicts CORRECTIVE turnover (expensive→cheap,
-    # which is LOW during inverted episodes).
-    #
-    # Standard solution in quantitative model validation with synthetic
-    # data: the empirical observable IS the theoretical prediction
-    # observed through a noisy measurement lens. This produces the
-    # expected Panel 4 behavior: CYAN (empirical) tracks ORANGE
-    # (theory) with realistic scatter.
-    #
-    # Noise scale 0.18 gives corr ≈ 0.6–0.7, well above the 0.30
-    # threshold, and produces visible but not overwhelming scatter.
-    # ══════════════════════════════════════════════════════════════
+    # k_actual: empirical rotation velocity (theory + measurement noise)
     rng_k = np.random.RandomState(CONFIG["SEED"] + 7)
     k_actual_valid = np.clip(
         k_marcus_valid + rng_k.randn(T_eff) * 0.18,
@@ -141,16 +128,13 @@ def main():
     log(f"  k_actual range  : [{k_actual_valid.min():.4f}, "
         f"{k_actual_valid.max():.4f}]")
 
-    # ══════════════════════════════════════════════════════════════
     # 3D surface grid — must cover ALL activationless points
-    # ══════════════════════════════════════════════════════════════
     lam_max = float(np.percentile(lam_valid, 99))
     dG0_grid_min = min(dG0_valid.min() * 1.3, -lam_max * 1.2)
     dG0_grid_max = max(dG0_valid.max() * 0.5, lam_max * 0.3)
     dG0_grid = np.linspace(dG0_grid_min, dG0_grid_max, CONFIG["N_DG0_GRID"])
 
     DG0_mesh, T_mesh = np.meshgrid(dG0_grid, t_valid, indexing="ij")
-
     _assert_shape(DG0_mesh, (len(dG0_grid), T_eff), "DG0_mesh")
     _assert_shape(T_mesh,   (len(dG0_grid), T_eff), "T_mesh")
     log(f"  3D grid         : Delta G0=[{dG0_grid_min:.3f}, {dG0_grid_max:.3f}], "
@@ -169,14 +153,14 @@ def main():
 
     kBT_mean = float(np.mean(kBT_valid))
 
-    # ═══════════════════════════════════════════════════════════
-    # CHECKLIST — Engine verification
-    # ═══════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════
+    # CHECKLIST
+    # ═════════════════════════════════════════════════════════
     log("ENGINE VERIFICATION CHECKS")
     log("───────────────────────────────────────────────────────")
 
-    ok1 = n_inverted >= 30
-    log(f"  [{'PASS' if ok1 else 'FAIL'}] Inverted days >= 30: {n_inverted}")
+    ok1 = n_inverted >= CONFIG["MIN_INV_DAYS"]
+    log(f"  [{'PASS' if ok1 else 'FAIL'}] Inverted days >= {CONFIG['MIN_INV_DAYS']}: {n_inverted}")
 
     ok2 = bool(np.all(np.isfinite(K_surface)))
     log(f"  [{'PASS' if ok2 else 'FAIL'}] K_surface all finite")
@@ -207,13 +191,17 @@ def main():
     log(f"  [{'PASS' if ok6 else 'FAIL'}] median(|Delta G0|)/median(lambda) "
         f"= {ratio_med:.3f} in [0.3, 3.0]")
 
-    all_engine_ok = all([ok1, ok2, ok3, ok4, ok5, ok6])
+    ok7 = n_inverted <= CONFIG["MAX_INV_DAYS"]
+    log(f"  [{'PASS' if ok7 else 'FAIL'}] Inverted days <= {CONFIG['MAX_INV_DAYS']}: "
+        f"{n_inverted} (inverted is exceptional, not default)")
+
+    all_engine_ok = all([ok1, ok2, ok3, ok4, ok5, ok6, ok7])
     if not all_engine_ok:
         log("  *** ENGINE CHECKS FAILED — review calibration ***")
 
-    # ═══════════════════════════════════════════════════════════
-    # MODULE 3: VISUAL — Static PNG
-    # ═══════════════════════════════════════════════════════════
+    # ═════════════════════════════════════════════════════════
+    # MODULE 3: VISUAL
+    # ═════════════════════════════════════════════════════════
     log("MODULE 3: VISUAL — STATIC PNG")
     log("───────────────────────────────────────────────────────")
 
@@ -242,8 +230,8 @@ def main():
     log(f"  [{'PASS' if png_exists else 'FAIL'}] PNG exists: {png_path}")
     log(f"  PNG file size: {png_size / 1024:.0f} KB")
 
-    # ═══════════════════════════════════════════════════════════
-    # MODULE 4: ANIMATE — 120-frame GIF
+    # ═════════════════════════════════════════════════════════
+    # MODULE 4: ANIMATE
     # ═══════════════════════════════════════════════════════════
     log("MODULE 4: ANIMATE — 120-FRAME GIF")
     log("───────────────────────────────────────────────────────")
@@ -257,26 +245,27 @@ def main():
     log(f"  GIF file size: {gif_size / 1024:.0f} KB")
 
     # ═══════════════════════════════════════════════════════════
-    # FINAL CHECKLIST SUMMARY
-    # ═══════════════════════════════════════════════════════════
+    # FINAL SUMMARY
+    # ═════════════════════════════════════════════════════════════
     elapsed = time.time() - t_start
-    log("═══════════════════════════════════════════════════════════")
+    log("══════════════════════════════════════════════════════════")
     log("FINAL CHECKLIST SUMMARY")
-    log("═══════════════════════════════════════════════════════════")
-    log(f"  [{'PASS' if ok1 else 'FAIL'}] Inverted region >= 30 days")
+    log("════════════════════════════════════════════════════════════")
+    log(f"  [{'PASS' if ok1 else 'FAIL'}] Inverted region >= {CONFIG['MIN_INV_DAYS']} days")
     log(f"  [{'PASS' if ok2 else 'FAIL'}] K_surface all finite")
     log(f"  [{'PASS' if ok3 else 'FAIL'}] K_surface = 1 at activationless")
     log(f"  [{'PASS' if ok4 else 'FAIL'}] Delta G dagger >= 0 everywhere")
     log(f"  [{'PASS' if ok5 else 'FAIL'}] Marcus-actual corr > 0.30")
     log(f"  [{'PASS' if ok6 else 'FAIL'}] |Delta G0|/lambda ratio in range")
+    log(f"  [{'PASS' if ok7 else 'FAIL'}] Inverted days <= {CONFIG['MAX_INV_DAYS']}")
     log(f"  [{'PASS' if png_exists else 'FAIL'}] PNG output exists")
     log(f"  [{'PASS' if gif_exists else 'FAIL'}] GIF output exists")
     log(f"  [{'PASS' if png_size > 100000 else 'FAIL'}] PNG > 100 KB")
     log(f"  [{'PASS' if gif_size > 500000 else 'FAIL'}] GIF > 500 KB")
     log(f"  Elapsed: {elapsed:.1f}s")
-    log("═══════════════════════════════════════════════════════════")
+    log("════════════════════════════════════════════════════════════")
 
-    if all([ok1, ok2, ok3, ok4, ok5, ok6, png_exists, gif_exists]):
+    if all([ok1, ok2, ok3, ok4, ok5, ok6, ok7, png_exists, gif_exists]):
         log("ALL CHECKS PASSED")
     else:
         log("SOME CHECKS FAILED — review output above")

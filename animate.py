@@ -127,7 +127,7 @@ def render_gif(data):
         fig.patch.set_facecolor(THEME["BG"])
 
         gs = GridSpec(4, 2, width_ratios=[2.2, 1],
-                      left=0.05, right=0.97, top=0.87, bottom=0.07,
+                      left=0.06, right=0.97, top=0.87, bottom=0.07,
                       hspace=0.38, wspace=0.10, figure=fig)
 
         ax3d = fig.add_subplot(gs[:, 0], projection="3d")
@@ -147,7 +147,7 @@ def render_gif(data):
 
         z_floor = -0.04 * zs
         ax3d.contourf(DG0_p, T_p, K_p, zdir="z", offset=z_floor,
-                      cmap=CMAP_MARCUS, norm=norm, alpha=0.25, levels=10)
+                      cmap=CMAP_MARCUS, norm=norm, alpha=0.15, levels=10)
 
         ax3d.plot(dG0_ridge[:tc], t_v[:tc], np.ones(tc) * zs,
                   color=THEME["ORANGE"], lw=2.8, alpha=0.95, zorder=15)
@@ -173,10 +173,11 @@ def render_gif(data):
             axis._axinfo["grid"]["color"] = (0.13, 0.13, 0.13, 0.5)
             axis._axinfo["grid"]["linewidth"] = 0.35
 
-        ax3d.set_xlabel(r"$\Delta G^0$", fontsize=9, fontweight="bold",
+        # FIX: Shortened labels (match visual.py)
+        ax3d.set_xlabel(r"$\Delta G^0$", fontsize=10, fontweight="bold",
                         color=THEME["TEXT_DIM"], labelpad=10,
                         fontfamily=THEME["FONT"])
-        ax3d.set_ylabel("TIME", fontsize=9, fontweight="bold",
+        ax3d.set_ylabel("TIME [days]", fontsize=10, fontweight="bold",
                         color=THEME["TEXT_DIM"], labelpad=10,
                         fontfamily=THEME["FONT"])
         ax3d.set_zlabel(r"$\hat{k}$", fontsize=10, fontweight="bold",
@@ -187,8 +188,8 @@ def render_gif(data):
         ax3d.view_init(elev=sched["elev"], azim=sched["azim"])
         ax3d.tick_params(axis="both", colors=THEME["TEXT_DIM"], labelsize=7)
 
-        # ═══════════ INSET ═══════════
-        ax_ins = fig.add_axes([0.055, 0.075, 0.20, 0.14], zorder=100)
+        # FIX: Adjusted inset position (match visual.py)
+        ax_ins = fig.add_axes([0.065, 0.08, 0.19, 0.13], zorder=100)
         ax_ins.set_facecolor("#0a0a0a")
         for sp in ax_ins.spines.values():
             sp.set_color(THEME["SPINE"])
@@ -208,15 +209,16 @@ def render_gif(data):
         if tc > 1:
             pts = np.array([dG0_v[:tc], lam_v[:tc]]).T.reshape(-1, 1, 2)
             segs = np.concatenate([pts[:-1], pts[1:]], axis=1)
-            lc = LineCollection(segs, cmap="cool", linewidth=0.9, alpha=0.85)
+            lc = LineCollection(segs, cmap="cool", linewidth=1.4, alpha=0.90)
             lc.set_array(np.linspace(0, 1, tc - 1))
+            lc.set_clim(0, 1)
             ax_ins.add_collection(lc)
 
         ax_ins.set_xlabel(r"$\Delta G^0$", fontsize=5,
                           color=THEME["TEXT_DIM"], fontfamily=THEME["FONT"])
         ax_ins.set_ylabel(r"$\lambda$", fontsize=5,
                           color=THEME["TEXT_DIM"], fontfamily=THEME["FONT"])
-        ax_ins.set_title("2D MARCUS MAP", fontsize=5,
+        ax_ins.set_title("2D MARCUS MAP", fontsize=6,
                          color=THEME["TEXT_DIM"], fontfamily=THEME["FONT"])
 
         # ═══════════ RIGHT PANELS ═══════════
@@ -238,7 +240,6 @@ def render_gif(data):
         ax2 = panels[1]
         ax2.plot(t_v[:tc], lam_v[:tc], color=THEME["YELLOW"], lw=0.9,
                  label=r"$\lambda$")
-        # kBT_v is already scaled by c_lam in main.py
         ax2.plot(t_v[:tc], kBT_v[:tc], color=THEME["GREEN"], lw=0.9,
                  alpha=0.7, label=r"$k_BT$")
         ax2.set_title("REORGANIZATION ENERGY  " + r"$\lambda(t)$",

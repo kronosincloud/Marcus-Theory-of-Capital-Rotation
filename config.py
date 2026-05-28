@@ -29,14 +29,12 @@ THEME = {
 
 # ════════════════════════════════════════════════════════════════
 # CUSTOM COLORMAP — Marcus Rate Surface
-# Inverted side (left of ridge): deep violet → purple → magenta
-# Normal side (right of ridge): orange → yellow → white-hot
 # ════════════════════════════════════════════════════════════════
 CMAP_MARCUS = LinearSegmentedColormap.from_list("marcus_rate", [
-    "#0a0010",   # Near-black with deep violet tint — deep inverted region
+    "#0a0010",   # Deep violet — deep inverted region (rate ≈ 0)
     "#4a0080",   # Purple — inverted region
-    "#ff1493",   # Magenta — approaching activationless from inverted side
-    "#ff9500",   # Orange — approaching activationless from normal side
+    "#ff1493",   # Magenta — approaching ridge from inverted side
+    "#ff9500",   # Orange — approaching ridge from normal side
     "#ffd400",   # Yellow — near activationless
     "#ffffff",   # White-hot — AT activationless (maximum rate)
 ])
@@ -56,8 +54,14 @@ CONFIG = {
     "N_TOP_BOT":        2,
     "N_DG0_GRID":       100,
     "N_LAM_GRID":       60,
-    "C_DELTA_G":        1.0,
-    "C_LAMBDA":         0.8,
+    "C_DELTA_G":        1.0,        # starting scaling (adjusted by calibration)
+    "C_LAMBDA":         0.8,        # starting seed (overridden by calibration)
+    "TARGET_LAM_NORMAL":  0.12,      # target λ during normal-vol periods
+    "VOL_CRISIS":       3.0,        # peak vol factor during crisis
+    "C_KBT_TARGET_RATIO": 0.10,     # target kBT/λ for sharp ridge
+    "MAX_INV_DAYS":     70,         # max inverted before down-scaling c_dg0
+    "TARGET_INV_DAYS":  55,         # target after down-scaling
+    "MIN_INV_DAYS":     30,         # absolute minimum
     "DPI_PNG":          100,
     "DPI_GIF":          80,
     "FIG_W":            19.2,
